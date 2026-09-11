@@ -1,0 +1,6 @@
+#!/home/vijil/Desktop/STM32/AXL_BIN/flashtool/.venv/bin/python3
+import sys
+from esp_rfc2217_server.__init__ import main
+if __name__ == '__main__':
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
+    sys.exit(main())

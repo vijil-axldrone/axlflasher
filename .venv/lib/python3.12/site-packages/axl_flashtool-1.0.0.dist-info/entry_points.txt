@@ -1,0 +1,5 @@
+[console_scripts]
+axlbin-flash = flash:main
+axlbin-packet = packet:main
+axlbin-setup = setup:cli_setup
+axlbin-update = update:main

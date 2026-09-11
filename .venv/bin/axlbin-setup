@@ -1,0 +1,6 @@
+#!/home/vijil/Desktop/STM32/AXL_BIN/flashtool/.venv/bin/python3
+import sys
+from setup import cli_setup
+if __name__ == '__main__':
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
+    sys.exit(cli_setup())

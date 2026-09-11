@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -e
+
+echo "============================================================"
+echo "      AXL Flashtool macOS Environment Setup"
+echo "============================================================"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Check Python 3 installation
+if ! command -v python3 &> /dev/null; then
+    echo "[ERROR] python3 was not found on your system."
+    echo "Please install Python 3 using Homebrew (brew install python) or from https://www.python.org/"
+    exit 1
+fi
+
+USE_VENV=false
+if python3 -m venv .venv 2>/dev/null; then
+    echo "Created python virtual environment in .venv"
+    PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python"
+    PIP_BIN="$SCRIPT_DIR/.venv/bin/pip"
+    USE_VENV=true
+else
+    PYTHON_BIN="python3"
+    PIP_BIN="python3 -m pip"
+fi
+
+# PEP 668 flag for system python if venv is not used
+PIP_FLAGS=""
+if [ "$USE_VENV" = false ]; then
+    if python3 -m pip install --help 2>&1 | grep -q -- "--break-system-packages"; then
+        PIP_FLAGS="--break-system-packages"
+    fi
+fi
+
+echo "[1/3] Installing Python package dependencies..."
+if [ "$USE_VENV" = true ]; then
+    "$PIP_BIN" install --upgrade pip setuptools
+    "$PIP_BIN" install -r requirements.txt
+    echo ""
+    echo "[2/3] Registering axlbin command line tools..."
+    "$PIP_BIN" install -e .
+else
+    $PIP_BIN install $PIP_FLAGS -r requirements.txt || $PIP_BIN install --user $PIP_FLAGS -r requirements.txt
+    echo ""
+    echo "[2/3] Registering axlbin command line tools..."
+    $PIP_BIN install $PIP_FLAGS -e . || $PIP_BIN install --user $PIP_FLAGS -e .
+fi
+
+# Symlink executables to ~/.local/bin for global terminal access without ./
+mkdir -p "$HOME/.local/bin"
+for cmd in axlbin-flash axlbin-update axlbin-packet axlbin-setup; do
+    if [ -f "$SCRIPT_DIR/.venv/bin/$cmd" ]; then
+        ln -sf "$SCRIPT_DIR/.venv/bin/$cmd" "$HOME/.local/bin/$cmd"
+    elif [ -f "$SCRIPT_DIR/$cmd" ]; then
+        ln -sf "$SCRIPT_DIR/$cmd" "$HOME/.local/bin/$cmd"
+    fi
+done
+
+echo ""
+echo "[3/3] Locating and configuring STM32_Programmer_CLI PATH..."
+"$PYTHON_BIN" setup.py configure
+
+echo ""
+echo "============================================================"
+echo " Setup Completed Successfully!"
+echo " Commands available globally: axlbin-flash, axlbin-update, axlbin-packet"
+echo "============================================================"

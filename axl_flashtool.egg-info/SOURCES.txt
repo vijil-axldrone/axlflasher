@@ -1,0 +1,10 @@
+flash.py
+packet.py
+setup.py
+update.py
+axl_flashtool.egg-info/PKG-INFO
+axl_flashtool.egg-info/SOURCES.txt
+axl_flashtool.egg-info/dependency_links.txt
+axl_flashtool.egg-info/entry_points.txt
+axl_flashtool.egg-info/requires.txt
+axl_flashtool.egg-info/top_level.txt
