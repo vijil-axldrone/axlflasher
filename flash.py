@@ -107,6 +107,7 @@ def _run_stream_windows(cmd: List[str], env: dict = None) -> Tuple[int, str]:
     and progress updates stream through normally.
     """
     try:
+        # pyrefly: ignore [missing-import]
         from winpty import PtyProcess
     except ImportError:
         print(
