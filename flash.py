@@ -66,32 +66,41 @@ def search_usb_ports() -> List[str]:
 def run_and_stream(cmd: List[str], env: dict = None) -> Tuple[int, str]:
     """
     Execute subprocess command and stream stdout/stderr in real-time cross-platform.
-    """
-    if sys.platform.startswith("linux") and shutil.which("stdbuf"):
-        cmd = ["stdbuf", "-oL", "-eL"] + cmd
 
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=env,
-        bufsize=0
-    )
+    On Windows, STM32_Programmer_CLI writes progress using carriage-return (\\r)
+    and buffers output when stdout is a pipe (not a TTY). Reading byte-by-byte
+    ensures we drain the pipe continuously and never block waiting for a full buffer.
+    CREATE_NO_WINDOW prevents a ghost console window from appearing on Windows.
+    """
+    kwargs: dict = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+        "env": env,
+        "bufsize": 0,
+    }
+
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+    process = subprocess.Popen(cmd, **kwargs)
 
     captured_bytes = bytearray()
 
     while True:
         try:
-            chunk = os.read(process.stdout.fileno(), 1024)
+            # Read one byte at a time so we never stall waiting for a large
+            # chunk that the child process hasn't flushed yet (common on Windows
+            # when the child detects its stdout is a pipe rather than a TTY).
+            byte = process.stdout.read(1)
         except (OSError, ValueError):
             break
 
-        if not chunk:
+        if not byte:
             break
 
-        sys.stdout.buffer.write(chunk)
+        sys.stdout.buffer.write(byte)
         sys.stdout.buffer.flush()
-        captured_bytes.extend(chunk)
+        captured_bytes.append(byte[0])
 
     process.wait()
     full_output = captured_bytes.decode("utf-8", errors="replace")
@@ -210,7 +219,6 @@ def flash_task(flash_target: str, firmware_dir: Path) -> None:
             "-c", "port=USB1",
             "-w", str(stm_app_file_path), "0x08000000",
             "-v",
-            "-Rst",
         ]
 
         while True:
