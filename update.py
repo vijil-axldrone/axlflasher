@@ -130,9 +130,6 @@ class MultipartStream:
 
 def run_and_stream(cmd: List[str], env: dict = None) -> Tuple[int, str]:
     """Execute subprocess command and stream stdout/stderr in real-time cross-platform."""
-    if sys.platform.startswith("linux") and shutil.which("stdbuf"):
-        cmd = ["stdbuf", "-oL", "-eL"] + cmd
-
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -145,7 +142,7 @@ def run_and_stream(cmd: List[str], env: dict = None) -> Tuple[int, str]:
 
     while True:
         try:
-            chunk = os.read(process.stdout.fileno(), 1024)
+            chunk = process.stdout.read(1024)
         except (OSError, ValueError):
             break
 
@@ -359,7 +356,6 @@ def flash_task(flash_target: str, firmware_dir: Path) -> None:
             "-c", "port=USB1",
             "-w", str(stm_app_file_path), "0x08000000",
             "-v",
-            "-Rst",
         ]
         while True:
             return_code, _ = run_and_stream(stm_cmd)
