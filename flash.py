@@ -115,8 +115,10 @@ def flash_task(flash_target: str, firmware_dir: Path) -> None:
     stm_app_file_path = firmware_dir / "axlbin.bin"
     log_file = firmware_dir / "changelog.txt"
 
-    if not esp_app_file_path.exists() or not stm_app_file_path.exists():
-        raise ValueError(f"Required firmware files are missing in {firmware_dir}!")
+    if flash_target in ["all", "esp", "--all", "--esp"] and not esp_app_file_path.exists():
+        raise ValueError(f"Required ESP32 firmware file ({esp_app_file_path.name}) is missing in {firmware_dir}!")
+    if flash_target in ["all", "stm", "--all", "--stm"] and not stm_app_file_path.exists():
+        raise ValueError(f"Required STM32 firmware file ({stm_app_file_path.name}) is missing in {firmware_dir}!")
 
     if log_file.exists():
         try:
@@ -134,7 +136,7 @@ def flash_task(flash_target: str, firmware_dir: Path) -> None:
     print("All required files available!")
 
     # ESP32 Flashing
-    if flash_target in ["--all", "--esp"]:
+    if flash_target in ["all", "esp", "--all", "--esp"]:
         while True:
             port_names = search_usb_ports()
             if not port_names:
@@ -197,7 +199,7 @@ def flash_task(flash_target: str, firmware_dir: Path) -> None:
         print("Skipping ESP Flashing")
 
     # STM32 Flashing
-    if flash_target in ["--all", "--stm"]:
+    if flash_target in ["all", "stm", "--all", "--stm"]:
         stm_cli = shutil.which("STM32_Programmer_CLI") or shutil.which("STM32_Programmer_CLI.exe") or "STM32_Programmer_CLI"
 
         stm_cmd = [
@@ -227,12 +229,21 @@ def main() -> None:
         description="ESP32 and STM32 Firmware Flashing Utility",
         formatter_class=argparse.RawTextHelpFormatter
     )
+    target_group = parser.add_mutually_exclusive_group()
+    target_group.add_argument(
+        "--esp",
+        action="store_true",
+        help="Flash ESP32 only"
+    )
+    target_group.add_argument(
+        "--stm",
+        action="store_true",
+        help="Flash STM32 only"
+    )
     parser.add_argument(
-        "target",
-        nargs="?",
-        default="--all",
-        choices=["--all", "--esp", "--stm", "--multi"],
-        help="Target option:\n  --all   Flash both ESP32 and STM32 (default)\n  --esp   Flash ESP32 only\n  --stm   Flash STM32 only\n  --multi Run continuous flashing loop for batch programming"
+        "--multi",
+        action="store_true",
+        help="Run continuous flashing loop for batch programming (ready to flash next device without exiting)"
     )
     parser.add_argument(
         "--dir",
@@ -243,8 +254,14 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    multi_mode = args.target == "--multi"
-    flash_target = "--all" if multi_mode else args.target
+    if args.esp:
+        flash_target = "esp"
+    elif args.stm:
+        flash_target = "stm"
+    else:
+        flash_target = "all"
+
+    multi_mode = args.multi
 
     if args.dir:
         firmware_dir = Path(args.dir).resolve()

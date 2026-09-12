@@ -164,8 +164,10 @@ def flash_task(flash_target: str, firmware_dir: Path) -> None:
     stm_app_file_path = firmware_dir / "axlbin.bin"
     log_file = firmware_dir / "changelog.txt"
 
-    if not esp_app_file_path.exists() or not stm_app_file_path.exists():
-        raise ValueError(f"Required firmware files are missing in {firmware_dir}!")
+    if flash_target in ["all", "esp", "--all", "--esp"] and not esp_app_file_path.exists():
+        raise ValueError(f"Required ESP32 firmware file ({esp_app_file_path.name}) is missing in {firmware_dir}!")
+    if flash_target in ["all", "stm", "--all", "--stm"] and not stm_app_file_path.exists():
+        raise ValueError(f"Required STM32 firmware file ({stm_app_file_path.name}) is missing in {firmware_dir}!")
 
     if log_file.exists():
         try:
@@ -285,7 +287,7 @@ def flash_task(flash_target: str, firmware_dir: Path) -> None:
             pass
 
     # ESP32 OTA Update
-    if flash_target in ["--all", "--esp"]:
+    if flash_target in ["all", "esp", "--all", "--esp"]:
         url = f"http://{ip_address}"
         print(f"Connecting to {url} ...")
 
@@ -326,7 +328,7 @@ def flash_task(flash_target: str, firmware_dir: Path) -> None:
 
                 if response.status_code != 200 or response.text.strip() != "OK":
                     clr_print(Colors.RED, "ESP32 OTA Update failed!")
-                    if flash_target in ["--all", "--stm"]:
+                    if flash_target in ["all", "stm", "--all", "--stm"]:
                         retry = input("Do you want to continue to STM32 flashing anyway? [Y/N]: ").strip().upper()
                         if retry != "Y":
                             print("Operation cancelled!")
@@ -337,7 +339,7 @@ def flash_task(flash_target: str, firmware_dir: Path) -> None:
                     clr_print(Colors.YELLOW, "ESP32 closed connection upon completing firmware upload (device rebooting).")
                 else:
                     clr_print(Colors.RED, f"Upload connection error: {e}")
-                    if flash_target in ["--all", "--stm"]:
+                    if flash_target in ["all", "stm", "--all", "--stm"]:
                         retry = input("Do you want to continue to STM32 flashing anyway? [Y/N]: ").strip().upper()
                         if retry != "Y":
                             print("Operation cancelled!")
@@ -346,7 +348,7 @@ def flash_task(flash_target: str, firmware_dir: Path) -> None:
         print("Skipping ESP Flashing")
 
     # STM32 Flashing
-    if flash_target in ["--all", "--stm"]:
+    if flash_target in ["all", "stm", "--all", "--stm"]:
         stm_cli = shutil.which("STM32_Programmer_CLI") or shutil.which("STM32_Programmer_CLI.exe") or "STM32_Programmer_CLI"
 
         stm_cmd = [
@@ -376,12 +378,21 @@ def main() -> None:
         description="ESP32 (OTA) and STM32 Firmware Updater Utility",
         formatter_class=argparse.RawTextHelpFormatter
     )
+    target_group = parser.add_mutually_exclusive_group()
+    target_group.add_argument(
+        "--esp",
+        action="store_true",
+        help="Update ESP32 OTA only"
+    )
+    target_group.add_argument(
+        "--stm",
+        action="store_true",
+        help="Flash STM32 only"
+    )
     parser.add_argument(
-        "target",
-        nargs="?",
-        default="--all",
-        choices=["--all", "--esp", "--stm", "--multi"],
-        help="Target option:\n  --all   Update both ESP32 (OTA) and STM32 (default)\n  --esp   Update ESP32 OTA only\n  --stm   Flash STM32 only\n  --multi Continuous updater loop for batch processing"
+        "--multi",
+        action="store_true",
+        help="Run continuous updater loop for batch processing (ready for next device without exiting)"
     )
     parser.add_argument(
         "--dir",
@@ -392,8 +403,14 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    multi_mode = args.target == "--multi"
-    flash_target = "--all" if multi_mode else args.target
+    if args.esp:
+        flash_target = "esp"
+    elif args.stm:
+        flash_target = "stm"
+    else:
+        flash_target = "all"
+
+    multi_mode = args.multi
 
     if args.dir:
         firmware_dir = Path(args.dir).resolve()
