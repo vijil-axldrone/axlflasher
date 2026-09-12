@@ -132,6 +132,40 @@ def set_unix_path(bin_dir: str) -> bool:
     return configured
 
 
+def install_linux_udev_rules():
+    """Configure udev permissions for STM32 DFU and ST-LINK devices on Linux."""
+    if platform.system() != "Linux":
+        return
+
+    rules_path = Path("/etc/udev/rules.d/49-stm32dfu.rules")
+    if rules_path.exists():
+        print(" Linux udev rules for STM32 USB DFU are already present.")
+        return
+
+    rules_content = (
+        '# USB DFU mode and ST-LINK rules for STM32 (AXL Flashtool)\n'
+        'SUBSYSTEMS=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="df11", MODE="0666", TAG+="uaccess"\n'
+        'SUBSYSTEMS=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="df00", MODE="0666", TAG+="uaccess"\n'
+        'SUBSYSTEMS=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3748", MODE="0666", TAG+="uaccess"\n'
+        'SUBSYSTEMS=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="374b", MODE="0666", TAG+="uaccess"\n'
+        'SUBSYSTEMS=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="374e", MODE="0666", TAG+="uaccess"\n'
+        'SUBSYSTEMS=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3752", MODE="0666", TAG+="uaccess"\n'
+        'SUBSYSTEMS=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3753", MODE="0666", TAG+="uaccess"\n'
+    )
+    print("\n Configuring Linux udev rules for STM32 USB DFU mode...")
+    try:
+        cmd = f"echo '{rules_content}' | sudo tee {rules_path} >/dev/null && sudo udevadm control --reload-rules && sudo udevadm trigger"
+        res = subprocess.run(cmd, shell=True)
+        if res.returncode == 0:
+            print(" Successfully installed Linux udev rules for STM32 USB DFU.")
+        else:
+            print(" Could not auto-install udev rules. Please run manually if required:")
+            print(f"   sudo tee {rules_path} << 'EOF'\n{rules_content}EOF")
+            print("   sudo udevadm control --reload-rules && sudo udevadm trigger")
+    except Exception as e:
+        print(f" Failed to set udev rules: {e}")
+
+
 def cli_setup():
     """CLI utility function to discover and configure STM32_Programmer_CLI PATH."""
     cli_dir = find_stm32_cli()
@@ -147,6 +181,7 @@ def cli_setup():
         set_windows_path(cli_dir)
     else:
         set_unix_path(cli_dir)
+        install_linux_udev_rules()
 
 
 if __name__ == "__main__":
