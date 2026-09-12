@@ -136,32 +136,23 @@ def _run_stream_windows(cmd: List[str], env: dict = None) -> Tuple[int, str]:
         process.wait()
         return process.returncode, captured_bytes.decode("utf-8", errors="replace")
 
-    # Build a flat command string; PtyProcess.spawn() expects a string on Windows.
-    import shlex
-    cmd_str = " ".join(shlex.quote(str(part)) for part in cmd)
+    # subprocess.list2cmdline() produces correct Windows double-quoted strings.
+    # shlex.quote() must NOT be used here — it produces Unix single-quotes that
+    # cmd.exe does not interpret, causing paths with spaces to break.
+    cmd_str = subprocess.list2cmdline([str(part) for part in cmd])
 
     proc = PtyProcess.spawn(cmd_str, env=env, dimensions=(50, 220))
     captured_parts: List[str] = []
 
-    while proc.isalive():
-        try:
-            data = proc.read(4096)
-        except EOFError:
-            break
-        if data:
-            sys.stdout.write(data)
-            sys.stdout.flush()
-            captured_parts.append(data)
-
-    # Drain any remaining output after the process exits
+    # Read until EOFError — more reliable than isalive() which can fire before
+    # the last bytes are flushed out of the PTY buffer.
     try:
         while True:
             data = proc.read(4096)
-            if not data:
-                break
-            sys.stdout.write(data)
-            sys.stdout.flush()
-            captured_parts.append(data)
+            if data:
+                sys.stdout.write(data)
+                sys.stdout.flush()
+                captured_parts.append(data)
     except EOFError:
         pass
 
