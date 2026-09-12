@@ -63,48 +63,123 @@ def search_usb_ports() -> List[str]:
     return usb_ports
 
 
-def run_and_stream(cmd: List[str], env: dict = None) -> Tuple[int, str]:
+def _run_stream_unix(cmd: List[str], env: dict = None) -> Tuple[int, str]:
     """
-    Execute subprocess command and stream stdout/stderr in real-time cross-platform.
-
-    On Windows, STM32_Programmer_CLI writes progress using carriage-return (\\r)
-    and buffers output when stdout is a pipe (not a TTY). Reading byte-by-byte
-    ensures we drain the pipe continuously and never block waiting for a full buffer.
-    CREATE_NO_WINDOW prevents a ghost console window from appearing on Windows.
+    Unix implementation: subprocess pipe works fine because the OS uses
+    line-buffered I/O semantics for pipes and tools flush normally.
     """
-    kwargs: dict = {
-        "stdout": subprocess.PIPE,
-        "stderr": subprocess.STDOUT,
-        "env": env,
-        "bufsize": 0,
-    }
-
-    if sys.platform == "win32":
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-
-    process = subprocess.Popen(cmd, **kwargs)
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+        bufsize=0,
+    )
 
     captured_bytes = bytearray()
-
     while True:
         try:
-            # Read one byte at a time so we never stall waiting for a large
-            # chunk that the child process hasn't flushed yet (common on Windows
-            # when the child detects its stdout is a pipe rather than a TTY).
-            byte = process.stdout.read(1)
+            chunk = process.stdout.read(1024)
         except (OSError, ValueError):
             break
-
-        if not byte:
+        if not chunk:
             break
-
-        sys.stdout.buffer.write(byte)
+        sys.stdout.buffer.write(chunk)
         sys.stdout.buffer.flush()
-        captured_bytes.append(byte[0])
+        captured_bytes.extend(chunk)
 
     process.wait()
-    full_output = captured_bytes.decode("utf-8", errors="replace")
-    return process.returncode, full_output
+    return process.returncode, captured_bytes.decode("utf-8", errors="replace")
+
+
+def _run_stream_windows(cmd: List[str], env: dict = None) -> Tuple[int, str]:
+    """
+    Windows implementation using a pseudo-console (ConPTY) via pywinpty.
+
+    STM32_Programmer_CLI.exe (and many other Windows CLI tools) call
+    GetConsoleMode() at startup. When stdout is a pipe (subprocess.PIPE)
+    that call fails and the C-runtime switches to fully-buffered mode:
+    output is held in an internal ~64 KB buffer and only flushed when full
+    or when the process exits — causing the progress bar to appear frozen.
+
+    pywinpty creates a real Windows pseudo-console (ConPTY). The child
+    process sees a genuine console handle, keeps line/block-flushed output,
+    and progress updates stream through normally.
+    """
+    try:
+        from winpty import PtyProcess
+    except ImportError:
+        print(
+            "[WARNING] pywinpty is not installed. STM32 progress output may hang.\n"
+            "[WARNING] Fix: pip install pywinpty"
+        )
+        # Best-effort fallback: byte-by-byte drain to avoid 1024-byte stall
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+            bufsize=0,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        captured_bytes = bytearray()
+        while True:
+            try:
+                byte = process.stdout.read(1)
+            except (OSError, ValueError):
+                break
+            if not byte:
+                break
+            sys.stdout.buffer.write(byte)
+            sys.stdout.buffer.flush()
+            captured_bytes.append(byte[0])
+        process.wait()
+        return process.returncode, captured_bytes.decode("utf-8", errors="replace")
+
+    # Build a flat command string; PtyProcess.spawn() expects a string on Windows.
+    import shlex
+    cmd_str = " ".join(shlex.quote(str(part)) for part in cmd)
+
+    proc = PtyProcess.spawn(cmd_str, env=env, dimensions=(50, 220))
+    captured_parts: List[str] = []
+
+    while proc.isalive():
+        try:
+            data = proc.read(4096)
+        except EOFError:
+            break
+        if data:
+            sys.stdout.write(data)
+            sys.stdout.flush()
+            captured_parts.append(data)
+
+    # Drain any remaining output after the process exits
+    try:
+        while True:
+            data = proc.read(4096)
+            if not data:
+                break
+            sys.stdout.write(data)
+            sys.stdout.flush()
+            captured_parts.append(data)
+    except EOFError:
+        pass
+
+    exit_code = proc.exitstatus if proc.exitstatus is not None else 0
+    return exit_code, "".join(captured_parts)
+
+
+def run_and_stream(cmd: List[str], env: dict = None) -> Tuple[int, str]:
+    """
+    Execute a subprocess and stream its output in real-time, cross-platform.
+
+    On Windows a pseudo-console (ConPTY) is used so that tools like
+    STM32_Programmer_CLI.exe flush their progress output correctly.
+    On Linux/macOS a simple pipe is sufficient.
+    """
+    if sys.platform == "win32":
+        return _run_stream_windows(cmd, env)
+    return _run_stream_unix(cmd, env)
 
 
 def resolve_tool_file(filename: str) -> Path:

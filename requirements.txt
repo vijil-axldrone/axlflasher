@@ -3,3 +3,4 @@ requests>=2.25.0
 colorama>=0.4.4
 esptool>=4.0
 setuptools>=60.0.0
+pywinpty>=2.0.0; sys_platform == "win32"

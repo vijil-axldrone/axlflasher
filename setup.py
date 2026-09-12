@@ -169,6 +169,7 @@ if __name__ == "__main__":
                 "requests>=2.25.0",
                 "colorama>=0.4.4",
                 "esptool>=4.0",
+                "pywinpty>=2.0.0; sys_platform == 'win32'",
             ],
             entry_points={
                 "console_scripts": [
