@@ -291,7 +291,7 @@ def flash_task(flash_target: str, firmware_dir: Path) -> None:
         while True:
             if sys.platform.startswith('win'):
                 with subprocess.Popen(
-                    command, 
+                    stm_cmd, 
                     stdout=subprocess.PIPE, 
                     stderr=subprocess.STDOUT, 
                     text=True
