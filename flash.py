@@ -162,15 +162,7 @@ def _run_stream_windows(cmd: List[str], env: dict = None) -> Tuple[int, str]:
 
 
 def run_and_stream(cmd: List[str], env: dict = None) -> Tuple[int, str]:
-    """
-    Execute a subprocess and stream its output in real-time, cross-platform.
-
-    On Windows a pseudo-console (ConPTY) is used so that tools like
-    STM32_Programmer_CLI.exe flush their progress output correctly.
-    On Linux/macOS a simple pipe is sufficient.
-    """
-    if sys.platform == "win32":
-        return _run_stream_windows(cmd, env)
+    print("Executing: ", cmd)
     return _run_stream_unix(cmd, env)
 
 
