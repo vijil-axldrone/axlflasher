@@ -289,7 +289,23 @@ def flash_task(flash_target: str, firmware_dir: Path) -> None:
         ]
 
         while True:
-            return_code, _ = run_and_stream(stm_cmd)
+            if sys.platform.startswith('win'):
+                with subprocess.Popen(
+                    command, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT, 
+                    text=True
+                ) as process:
+                    # Read the stdout stream line-by-line as it yields data
+                    for line in process.stdout:
+                        print(line, end="")  # end="" prevents duplicating newlines
+                        sys.stdout.flush()   # Forces the console to display the text immediately
+
+                    # Wait for the process to safely exit and grab the return code
+                    return_code = process.wait()
+            else:
+                return_code, _ = run_and_stream(stm_cmd)
+
             if return_code == 0:
                 clr_print(Colors.GREEN, "\nSTM32 flashing successful!")
                 break
